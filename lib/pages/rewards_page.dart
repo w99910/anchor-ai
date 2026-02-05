@@ -1,0 +1,957 @@
+import 'package:confetti/confetti.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/nft_service.dart';
+import '../services/web3_service.dart';
+import '../services/database_service.dart';
+import '../utils/confetti_overlay.dart';
+
+/// Page displaying streak NFT rewards
+class RewardsPage extends StatefulWidget {
+  const RewardsPage({super.key});
+
+  @override
+  State<RewardsPage> createState() => _RewardsPageState();
+}
+
+class _RewardsPageState extends State<RewardsPage> with WidgetsBindingObserver {
+  final NFTService _nftService = NFTService();
+  final Web3Service _web3Service = Web3Service();
+  final DatabaseService _databaseService = DatabaseService();
+  late final ConfettiController _confettiController;
+
+  int _currentStreak = 0;
+  int _mockStreakBonus = 0; // For testing: adds to streak to unlock milestones
+  bool _isLoading = true;
+  bool _isMinting = false;
+  StreakMilestone? _mintingMilestone;
+  StreakMilestone?
+  _pendingMintMilestone; // Track pending mint after wallet connection
+  DateTime? _mintingStartTime; // Track when minting started
+
+  /// Get effective streak (real + mock bonus for testing)
+  int get _effectiveStreak => _currentStreak + _mockStreakBonus;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
+    _web3Service.addListener(_onWeb3StateChange);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _web3Service.removeListener(_onWeb3StateChange);
+    _confettiController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _isMinting) {
+      // If we've been minting for more than 2 minutes, something likely went wrong
+      // Reset the minting state
+      if (_mintingStartTime != null) {
+        final elapsed = DateTime.now().difference(_mintingStartTime!);
+        if (elapsed > const Duration(minutes: 2)) {
+          debugPrint('RewardsPage: Minting timed out after app resume, resetting state');
+          if (mounted) {
+            setState(() {
+              _isMinting = false;
+              _mintingMilestone = null;
+              _mintingStartTime = null;
+            });
+          }
+        }
+      }
+    }
+  }
+
+  void _onWeb3StateChange() {
+    debugPrint('RewardsPage: _onWeb3StateChange called');
+    debugPrint('RewardsPage: _pendingMintMilestone = $_pendingMintMilestone');
+    debugPrint('RewardsPage: isConnected = ${_web3Service.isConnected}');
+    debugPrint('RewardsPage: walletAddress = ${_web3Service.walletAddress}');
+    debugPrint('RewardsPage: chainId = ${_web3Service.chainId}');
+
+    // If we have a pending mint and wallet just connected, continue minting
+    if (_pendingMintMilestone != null && _web3Service.isConnected && mounted) {
+      debugPrint(
+        'RewardsPage: Continuing pending mint for ${_pendingMintMilestone!.name}',
+      );
+      final milestone = _pendingMintMilestone!;
+      _pendingMintMilestone = null;
+      _continueMinting(milestone);
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadData() async {
+    await _nftService.initialize();
+    await _calculateStreak();
+
+    // Sync claimed milestones from blockchain if wallet is connected
+    if (_web3Service.isConnected) {
+      await _nftService.syncClaimedMilestones();
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _calculateStreak() async {
+    final journalEntries = await _databaseService.getJournalEntries();
+    if (journalEntries.isEmpty) {
+      _currentStreak = 0;
+      return;
+    }
+
+    final now = DateTime.now();
+    int streak = 0;
+    DateTime checkDate = DateTime(now.year, now.month, now.day);
+
+    // Group entries by date
+    final entriesByDate = <String, bool>{};
+    for (final entry in journalEntries) {
+      final dateKey =
+          '${entry.createdAt.year}-${entry.createdAt.month}-${entry.createdAt.day}';
+      entriesByDate[dateKey] = true;
+    }
+
+    // Check today first, if no entry today, start from yesterday
+    final todayKey = '${checkDate.year}-${checkDate.month}-${checkDate.day}';
+    if (!entriesByDate.containsKey(todayKey)) {
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+
+    // Count consecutive days
+    while (true) {
+      final dateKey = '${checkDate.year}-${checkDate.month}-${checkDate.day}';
+      if (entriesByDate.containsKey(dateKey)) {
+        streak++;
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+
+    _currentStreak = streak;
+  }
+
+  /// Mock unlock the next milestone (for testing only)
+  void _mockUnlockNextMilestone() {
+    // Find the next locked milestone
+    for (final milestone in StreakMilestone.values) {
+      if (_effectiveStreak < milestone.requiredStreak) {
+        // Set mock bonus to reach this milestone
+        _mockStreakBonus = milestone.requiredStreak - _currentStreak;
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🧪 Test mode: Unlocked ${milestone.name} (streak set to ${_effectiveStreak})',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+    }
+    // All milestones unlocked
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🧪 All milestones already unlocked!'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Reset mock streak bonus
+  void _resetMockStreak() {
+    _mockStreakBonus = 0;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🧪 Test mode: Reset to real streak'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _disconnectWallet() async {
+    try {
+      await _web3Service.disconnect();
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Wallet disconnected. Please reconnect while on Sepolia testnet.',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to disconnect: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _mintNFT(StreakMilestone milestone) async {
+    setState(() {
+      _isMinting = true;
+      _mintingMilestone = milestone;
+      _mintingStartTime = DateTime.now();
+    });
+
+    // Check network connectivity first
+    final connectivityResult = await Connectivity().checkConnectivity();
+    final hasNetwork = connectivityResult.any(
+      (result) => result != ConnectivityResult.none,
+    );
+
+    if (!hasNetwork) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No internet connection. Please check your network and try again.',
+            ),
+          ),
+        );
+        setState(() {
+          _isMinting = false;
+          _mintingMilestone = null;
+          _mintingStartTime = null;
+        });
+      }
+      return;
+    }
+
+    // Initialize web3 service if needed
+    if (!_web3Service.isInitialized) {
+      try {
+        debugPrint('RewardsPage: Initializing web3 service...');
+        await _web3Service.initialize(context);
+        debugPrint('RewardsPage: Web3 service initialized');
+      } catch (e) {
+        debugPrint('RewardsPage: Failed to initialize web3: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to initialize wallet service: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+          setState(() {
+            _isMinting = false;
+            _mintingMilestone = null;
+            _mintingStartTime = null;
+          });
+        }
+        return;
+      }
+    }
+
+    // Auto-connect wallet if not connected
+    if (!_web3Service.isConnected) {
+      // Store the milestone so we can continue after redirect
+      _pendingMintMilestone = milestone;
+
+      try {
+        debugPrint('RewardsPage: Opening wallet modal...');
+        // Open wallet modal - this will return when modal closes
+        // but connection may complete later via deep link
+        await _web3Service.openModal();
+        debugPrint('RewardsPage: Modal closed, checking connection...');
+
+        // Give it a moment to check connection state
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // If connected now, continue minting
+        if (_web3Service.isConnected) {
+          debugPrint('RewardsPage: Connected! Continuing to mint...');
+          _pendingMintMilestone = null;
+          await _continueMinting(milestone);
+        } else {
+          debugPrint(
+            'RewardsPage: Not connected yet, waiting for deep link callback...',
+          );
+          // Connection will complete via deep link callback
+          // The _onWeb3StateChange listener will handle it
+          // Just keep showing loading state
+        }
+      } catch (e) {
+        _pendingMintMilestone = null;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to connect wallet: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+          setState(() {
+            _isMinting = false;
+            _mintingMilestone = null;
+            _mintingStartTime = null;
+          });
+        }
+      }
+      return;
+    }
+
+    // Already connected, proceed with minting
+    await _continueMinting(milestone);
+  }
+
+  Future<void> _continueMinting(StreakMilestone milestone) async {
+    if (!mounted) return;
+
+    setState(() {
+      _isMinting = true;
+      _mintingMilestone = milestone;
+      _mintingStartTime = DateTime.now();
+    });
+
+    try {
+      final txHash = await _nftService.mintStreakNFT(milestone);
+      if (txHash != null && mounted) {
+        _confettiController.play();
+
+        // Refresh claimed milestones to update the UI (with timeout to avoid hanging)
+        try {
+          await _nftService.syncClaimedMilestones().timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              debugPrint('RewardsPage: syncClaimedMilestones timed out');
+            },
+          );
+        } catch (syncError) {
+          debugPrint('RewardsPage: Error syncing milestones: $syncError');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎉 ${milestone.name} NFT minted successfully!'),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () {
+                  launchUrl(Uri.parse(_nftService.getEtherscanUrl(txHash)));
+                },
+              ),
+              duration: const Duration(seconds: 5),
+              persist: false,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to mint NFT: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMinting = false;
+          _mintingMilestone = null;
+          _mintingStartTime = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rewards = _nftService.getAvailableRewards(_effectiveStreak);
+    final unlockedCount = rewards.where((r) => r.isEarned).length;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Streak Rewards'),
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          // Debug test button
+          if (kDebugMode)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.bug_report),
+              tooltip: 'Test Options',
+              onSelected: (value) {
+                if (value == 'unlock') {
+                  _mockUnlockNextMilestone();
+                } else if (value == 'reset') {
+                  _resetMockStreak();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'unlock',
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_open, size: 20),
+                      SizedBox(width: 8),
+                      Text('Unlock Next Milestone'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'reset',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh, size: 20),
+                      SizedBox(width: 8),
+                      Text('Reset to Real Streak'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: CustomScrollView(
+                    slivers: [
+                      // Header with current streak
+                      SliverToBoxAdapter(child: _buildStreakHeader(context)),
+
+                      // Progress indicator
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'NFT Rewards',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$unlockedCount of ${rewards.length} unlocked',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // NFT reward cards
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildRewardCard(context, rewards[index]),
+                            ),
+                            childCount: rewards.length,
+                          ),
+                        ),
+                      ),
+
+                      // Wallet status section
+                      SliverToBoxAdapter(
+                        child: _buildWalletStatusSection(context),
+                      ),
+
+                      // Info section
+                      SliverToBoxAdapter(child: _buildInfoSection(context)),
+
+                      const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                    ],
+                  ),
+                ),
+          CelebrationConfetti(controller: _confettiController),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStreakHeader(BuildContext context) {
+    final isMockMode = _mockStreakBonus > 0;
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).colorScheme.primary.withOpacity(0.7),
+            Theme.of(context).colorScheme.secondary.withOpacity(0.5),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: isMockMode ? Border.all(color: Colors.orange, width: 2) : null,
+      ),
+      child: Column(
+        children: [
+          const Text('🔥', style: TextStyle(fontSize: 48)),
+          const SizedBox(height: 8),
+          Text(
+            '$_effectiveStreak',
+            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            isMockMode ? 'Day Streak (Test Mode)' : 'Day Streak',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: isMockMode ? Colors.orange : Colors.white.withOpacity(0.9),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildNextMilestoneProgress(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextMilestoneProgress(BuildContext context) {
+    // Find next milestone
+    StreakMilestone? nextMilestone;
+    for (final milestone in StreakMilestone.values) {
+      if (_effectiveStreak < milestone.requiredStreak) {
+        nextMilestone = milestone;
+        break;
+      }
+    }
+
+    if (nextMilestone == null) {
+      return Text(
+        '🏆 All milestones achieved!',
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(color: Colors.white),
+      );
+    }
+
+    final progress = _effectiveStreak / nextMilestone.requiredStreak;
+    final daysRemaining = nextMilestone.requiredStreak - _effectiveStreak;
+
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: progress,
+            backgroundColor: Colors.white.withOpacity(0.3),
+            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            minHeight: 8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '$daysRemaining days until ${nextMilestone.name}',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.white.withOpacity(0.9)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRewardCard(BuildContext context, NFTReward reward) {
+    final isLocked = !reward.isEarned;
+    final canMint = reward.isEarned && !reward.isMinted;
+    final isMinting = _isMinting && _mintingMilestone == reward.milestone;
+
+    return Card(
+      elevation: isLocked ? 0 : 2,
+      color: isLocked
+          ? Theme.of(context).colorScheme.surfaceContainerHighest
+          : null,
+      child: InkWell(
+        onTap: canMint ? () => _mintNFT(reward.milestone) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // NFT Image/Icon
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: isLocked
+                      ? Colors.grey.withOpacity(0.3)
+                      : _getRarityColor(
+                          reward.milestone.rarity,
+                        ).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isLocked
+                        ? Colors.grey.withOpacity(0.5)
+                        : _getRarityColor(reward.milestone.rarity),
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    isLocked ? '🔒' : reward.milestone.emoji,
+                    style: TextStyle(
+                      fontSize: 28,
+                      color: isLocked ? Colors.grey : null,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          reward.milestone.name,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isLocked ? Colors.grey : null,
+                              ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isLocked
+                                ? Colors.grey.withOpacity(0.3)
+                                : _getRarityColor(
+                                    reward.milestone.rarity,
+                                  ).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            reward.milestone.rarity,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: isLocked
+                                      ? Colors.grey
+                                      : _getRarityColor(
+                                          reward.milestone.rarity,
+                                        ),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${reward.milestone.requiredStreak} day streak',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant
+                            .withOpacity(isLocked ? 0.5 : 1),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      reward.milestone.description,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant
+                            .withOpacity(isLocked ? 0.5 : 1),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Action button
+              if (canMint)
+                isMinting
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : SizedBox(
+                        width: 70,
+                        child: FilledButton(
+                          onPressed: () => _mintNFT(reward.milestone),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          child: const Text('Mint'),
+                        ),
+                      )
+              else if (reward.isMinted)
+                Icon(
+                  Icons.check_circle,
+                  color: Theme.of(context).colorScheme.primary,
+                )
+              else if (isLocked)
+                Text(
+                  '${reward.milestone.requiredStreak - _effectiveStreak}d',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(color: Colors.grey),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWalletStatusSection(BuildContext context) {
+    final isConnected = _web3Service.isConnected;
+    final address = _web3Service.walletAddress;
+    final chainId = _web3Service.chainId;
+    final isSepoliaNetwork =
+        chainId == 'eip155:11155111' || chainId == '11155111';
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isConnected
+              ? (isSepoliaNetwork
+                    ? Colors.green.withOpacity(0.3)
+                    : Colors.orange.withOpacity(0.3))
+              : Colors.grey.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isConnected
+                    ? Icons.account_balance_wallet
+                    : Icons.account_balance_wallet_outlined,
+                size: 20,
+                color: isConnected
+                    ? (isSepoliaNetwork ? Colors.green : Colors.orange)
+                    : Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Wallet Status',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isConnected
+                      ? (isSepoliaNetwork
+                            ? Colors.green.withOpacity(0.1)
+                            : Colors.orange.withOpacity(0.1))
+                      : Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isConnected
+                      ? (isSepoliaNetwork ? 'Sepolia' : 'Wrong Network')
+                      : 'Not Connected',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isConnected
+                        ? (isSepoliaNetwork ? Colors.green : Colors.orange)
+                        : Colors.grey,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (isConnected) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Address',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${address?.substring(0, 6)}...${address?.substring(address.length - 4)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _disconnectWallet,
+                  icon: const Icon(Icons.logout, size: 16),
+                  label: const Text('Disconnect'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (!isSepoliaNetwork) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: Colors.orange,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Please disconnect and reconnect while MetaMask is on Sepolia testnet',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: 8),
+            Text(
+              'Connect your wallet to mint NFT rewards',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'How it works',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '• Maintain your journal streak to unlock NFT rewards\n'
+            '• Connect your wallet in Settings to mint NFTs\n'
+            '• NFTs are minted on Sepolia testnet (free, no real ETH needed)\n'
+            '• Each milestone can only be claimed once\n'
+            '• View your NFTs on OpenSea testnets',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getRarityColor(String rarity) {
+    switch (rarity) {
+      case 'Starter':
+        return Colors.green;
+      case 'Common':
+        return Colors.grey.shade600;
+      case 'Rare':
+        return Colors.blue;
+      case 'Epic':
+        return Colors.purple;
+      case 'Legendary':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+}

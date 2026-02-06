@@ -14,6 +14,7 @@ import '../services/gemini_service.dart';
 import '../services/locale_service.dart';
 import '../utils/responsive.dart';
 import 'app_lock_setup_page.dart';
+import 'onboarding/language_selection_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -479,12 +480,18 @@ class _SettingsPageState extends State<SettingsPage> {
           SnackBar(
             content: Text(l10n.dataCleared),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 2),
           ),
         );
 
-        // Optionally restart the app or reset state
-        // You might want to navigate to onboarding or restart
+        // Navigate to onboarding
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

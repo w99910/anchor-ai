@@ -221,9 +221,24 @@ class _AnchorAppState extends State<AnchorApp> with WidgetsBindingObserver {
                 GlobalCupertinoLocalizations.delegate,
               ],
               supportedLocales: LocaleService.supportedLocales,
-              home: _isLocked
-                  ? LockScreen(onUnlocked: () => appLockService.unlock())
-                  : const SplashScreen(),
+              // Use a builder to overlay the lock screen on top of the
+              // navigator so the navigation stack is never destroyed.
+              home: const SplashScreen(),
+              builder: (context, child) {
+                return Stack(
+                  children: [
+                    // The actual app content (navigator)
+                    child!,
+                    // Lock screen overlay — sits on top when locked
+                    if (_isLocked)
+                      Positioned.fill(
+                        child: LockScreen(
+                          onUnlocked: () => appLockService.unlock(),
+                        ),
+                      ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -432,8 +447,17 @@ class _SplashScreenState extends State<SplashScreen>
     final hasCompletedPayment = appointmentService.hasCompletedPaymentToShow;
     final hasLocalePreference = await localeService.hasLocalePreference();
 
-    // Wait for animation
-    await Future.delayed(const Duration(milliseconds: 2000));
+    // Skip the splash animation when resuming from a wallet redirect
+    // (pending or completed payment means the user was mid-flow)
+    final isWalletRedirect = pendingPayment != null || hasCompletedPayment;
+
+    if (isWalletRedirect) {
+      // Minimal delay – just enough for the frame to render
+      await Future.delayed(const Duration(milliseconds: 300));
+    } else {
+      // Normal first-launch animation
+      await Future.delayed(const Duration(milliseconds: 2000));
+    }
 
     if (mounted) {
       // Priority 1: Check if there's a completed payment to show success screen

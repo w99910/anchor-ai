@@ -410,6 +410,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showClearAllDataDialog(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -428,7 +431,12 @@ class _SettingsPageState extends State<SettingsPage> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _clearAllData(context);
+              await _clearAllData(
+                l10n: l10n,
+                scaffoldMessenger: scaffoldMessenger,
+                navigator: navigator,
+                errorColor: errorColor,
+              );
             },
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
@@ -440,18 +448,19 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _clearAllData(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
-
+  Future<void> _clearAllData({
+    required AppLocalizations l10n,
+    required ScaffoldMessengerState scaffoldMessenger,
+    required NavigatorState navigator,
+    required Color errorColor,
+  }) async {
     // Show loading indicator
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n.clearingData),
-          duration: const Duration(seconds: 10),
-        ),
-      );
-    }
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text(l10n.clearingData),
+        duration: const Duration(seconds: 10),
+      ),
+    );
 
     try {
       // 1. Clear SharedPreferences
@@ -474,36 +483,30 @@ class _SettingsPageState extends State<SettingsPage> {
         await modelsDir.delete(recursive: true);
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.dataCleared),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(l10n.dataCleared),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
 
-        // Navigate to onboarding
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
-            (route) => false,
-          );
-        }
-      }
+      // Navigate to onboarding
+      await Future.delayed(const Duration(milliseconds: 500));
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
+        (route) => false,
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error clearing data: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Error clearing data: $e'),
+          backgroundColor: errorColor,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 

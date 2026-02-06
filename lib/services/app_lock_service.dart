@@ -210,7 +210,8 @@ class AppLockService extends ChangeNotifier {
     try {
       final didAuthenticate = await _localAuth.authenticate(
         localizedReason: reason ?? 'Unlock Anchor',
-        authMessages: const [],
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
       );
 
       if (didAuthenticate) {

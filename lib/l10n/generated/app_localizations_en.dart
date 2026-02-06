@@ -437,14 +437,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cloudAi => 'Cloud AI';
 
   @override
-  String get morePowerful => 'More powerful';
+  String get morePowerful => 'Powered by Gemini 3';
 
   @override
   String get cloudDescription =>
-      'Powered by cloud providers for faster, smarter responses.';
+      'Powered by Google\'s latest Gemini 3 for fast, intelligent responses.';
 
   @override
-  String get moreCapableModels => 'More capable models';
+  String get moreCapableModels => 'Google\'s most advanced AI';
 
   @override
   String get fasterResponses => 'Faster responses';
@@ -762,7 +762,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get privateRunsLocally => 'Private, runs locally';
 
   @override
-  String get cloudGemini => 'Cloud (Gemini)';
+  String get cloudGemini => 'Cloud (Gemini 3)';
 
   @override
   String get fasterRequiresInternet => 'Faster, requires internet';

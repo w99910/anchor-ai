@@ -710,17 +710,17 @@
     "description": "Cloud AI option title"
   },
   
-  "morePowerful": "More powerful",
+  "morePowerful": "Powered by Gemini 3",
   "@morePowerful": {
     "description": "Cloud AI subtitle"
   },
   
-  "cloudDescription": "Powered by cloud providers for faster, smarter responses.",
+  "cloudDescription": "Powered by Google's latest Gemini 3 for fast, intelligent responses.",
   "@cloudDescription": {
     "description": "Cloud AI description"
   },
   
-  "moreCapableModels": "More capable models",
+  "moreCapableModels": "Google's most advanced AI",
   "@moreCapableModels": {
     "description": "Cloud benefit"
   },
@@ -1268,7 +1268,7 @@
     "description": "On-device description"
   },
   
-  "cloudGemini": "Cloud (Gemini)",
+  "cloudGemini": "Cloud (Gemini 3)",
   "@cloudGemini": {
     "description": "Cloud Gemini provider option"
   },

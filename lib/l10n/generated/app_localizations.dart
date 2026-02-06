@@ -923,19 +923,19 @@ abstract class AppLocalizations {
   /// Cloud AI subtitle
   ///
   /// In en, this message translates to:
-  /// **'More powerful'**
+  /// **'Powered by Gemini 3'**
   String get morePowerful;
 
   /// Cloud AI description
   ///
   /// In en, this message translates to:
-  /// **'Powered by cloud providers for faster, smarter responses.'**
+  /// **'Powered by Google\'s latest Gemini 3 for fast, intelligent responses.'**
   String get cloudDescription;
 
   /// Cloud benefit
   ///
   /// In en, this message translates to:
-  /// **'More capable models'**
+  /// **'Google\'s most advanced AI'**
   String get moreCapableModels;
 
   /// Cloud benefit
@@ -1523,7 +1523,7 @@ abstract class AppLocalizations {
   /// Cloud Gemini provider option
   ///
   /// In en, this message translates to:
-  /// **'Cloud (Gemini)'**
+  /// **'Cloud (Gemini 3)'**
   String get cloudGemini;
 
   /// Cloud provider description

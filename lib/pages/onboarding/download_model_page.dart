@@ -143,7 +143,7 @@ class _DownloadModelPageState extends State<DownloadModelPage> {
                   l10n.fasterResponses,
                   l10n.noStorageNeeded,
                 ],
-                drawbacks: [l10n.requiresInternet, l10n.dataSentToCloud],
+                drawbacks: [l10n.requiresInternet],
                 isSelected: _selectedChoice == AiModelChoice.cloud,
                 onTap: _isSettingUp
                     ? null

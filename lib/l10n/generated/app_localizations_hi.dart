@@ -438,14 +438,14 @@ class AppLocalizationsHi extends AppLocalizations {
   String get cloudAi => 'क्लाउड AI';
 
   @override
-  String get morePowerful => 'अधिक शक्तिशाली';
+  String get morePowerful => 'Gemini 3 द्वारा संचालित';
 
   @override
   String get cloudDescription =>
-      'तेज़, स्मार्ट प्रतिक्रियाओं के लिए क्लाउड प्रदाताओं द्वारा संचालित।';
+      'तेज़, बुद्धिमान प्रतिक्रियाओं के लिए Google के नवीनतम Gemini 3 द्वारा संचालित।';
 
   @override
-  String get moreCapableModels => 'अधिक सक्षम मॉडल';
+  String get moreCapableModels => 'Google की सबसे उन्नत AI';
 
   @override
   String get fasterResponses => 'तेज़ प्रतिक्रियाएं';
@@ -764,7 +764,7 @@ class AppLocalizationsHi extends AppLocalizations {
   String get privateRunsLocally => 'निजी, स्थानीय रूप से चलता है';
 
   @override
-  String get cloudGemini => 'क्लाउड (Gemini)';
+  String get cloudGemini => 'क्लाउड (Gemini 3)';
 
   @override
   String get fasterRequiresInternet => 'तेज़, इंटरनेट आवश्यक';

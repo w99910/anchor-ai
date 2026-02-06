@@ -15,7 +15,7 @@ class GeminiService extends ChangeNotifier {
 
   static const String _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta';
-  static const String _model = 'gemini-2.5-flash-preview-09-2025';
+  static const String _model = 'gemini-3-flash-preview';
 
   /// Get API key from environment
   static String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';

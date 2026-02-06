@@ -134,6 +134,9 @@ class AppLocalizationsTh extends AppLocalizations {
   String get clearHistory => 'ล้างประวัติ';
 
   @override
+  String get clearAllData => 'ล้างข้อมูลทั้งหมด';
+
+  @override
   String get exportData => 'ส่งออกข้อมูล';
 
   @override
@@ -704,6 +707,19 @@ class AppLocalizationsTh extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'การดำเนินการนี้จะลบข้อมูลทั้งหมดของคุณ ไม่สามารถย้อนกลับได้';
+
+  @override
+  String get clearAllDataQuestion => 'ล้างข้อมูลทั้งหมด?';
+
+  @override
+  String get clearAllDataWarning =>
+      'การดำเนินการนี้จะลบข้อมูลทั้งหมดของคุณอย่างถาวร รวมถึงประวัติการแชท บันทึกในไดอารี่ การประเมิน การตั้งค่า และโมเดล AI ที่ดาวน์โหลด ไม่สามารถย้อนกลับได้';
+
+  @override
+  String get dataCleared => 'ล้างข้อมูลทั้งหมดสำเร็จแล้ว';
+
+  @override
+  String get clearingData => 'กำลังล้างข้อมูล...';
 
   @override
   String get clear => 'ล้าง';

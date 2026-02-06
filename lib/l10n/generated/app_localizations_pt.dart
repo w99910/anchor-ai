@@ -133,6 +133,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get clearHistory => 'Limpar histórico';
 
   @override
+  String get clearAllData => 'Limpar todos os dados';
+
+  @override
   String get exportData => 'Exportar dados';
 
   @override
@@ -714,6 +717,19 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'Isso excluirá todos os seus dados. Esta ação não pode ser desfeita.';
+
+  @override
+  String get clearAllDataQuestion => 'Limpar todos os dados?';
+
+  @override
+  String get clearAllDataWarning =>
+      'Isso excluirá permanentemente todos os seus dados incluindo histórico de chat, entradas de diário, avaliações, configurações e modelos de IA baixados. Esta ação não pode ser desfeita.';
+
+  @override
+  String get dataCleared => 'Todos os dados foram limpos com sucesso';
+
+  @override
+  String get clearingData => 'Limpando dados...';
 
   @override
   String get clear => 'Limpar';

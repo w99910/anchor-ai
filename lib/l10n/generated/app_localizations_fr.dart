@@ -134,6 +134,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get clearHistory => 'Effacer l\'historique';
 
   @override
+  String get clearAllData => 'Effacer toutes les données';
+
+  @override
   String get exportData => 'Exporter les données';
 
   @override
@@ -718,6 +721,19 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'Cela supprimera toutes vos données. Cette action ne peut pas être annulée.';
+
+  @override
+  String get clearAllDataQuestion => 'Effacer toutes les données?';
+
+  @override
+  String get clearAllDataWarning =>
+      'Cela supprimera définitivement toutes vos données, y compris l\'historique des discussions, les entrées de journal, les évaluations, les paramètres et les modèles d\'IA téléchargés. Cette action ne peut pas être annulée.';
+
+  @override
+  String get dataCleared => 'Toutes les données ont été effacées avec succès';
+
+  @override
+  String get clearingData => 'Suppression des données...';
 
   @override
   String get clear => 'Effacer';

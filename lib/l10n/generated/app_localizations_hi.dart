@@ -133,6 +133,9 @@ class AppLocalizationsHi extends AppLocalizations {
   String get clearHistory => 'इतिहास साफ़ करें';
 
   @override
+  String get clearAllData => 'सभी डेटा साफ़ करें';
+
+  @override
   String get exportData => 'डेटा निर्यात करें';
 
   @override
@@ -708,6 +711,19 @@ class AppLocalizationsHi extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'यह आपका सारा डेटा हटा देगा। यह क्रिया पूर्ववत नहीं की जा सकती।';
+
+  @override
+  String get clearAllDataQuestion => 'सभी डेटा साफ़ करें?';
+
+  @override
+  String get clearAllDataWarning =>
+      'यह स्थायी रूप से आपका सभी डेटा हटा देगा जिसमें चैट इतिहास, डायरी प्रविष्टियां, मूल्यांकन, सेटिंग्स और डाउनलोड किए गए AI मॉडल शामिल हैं। यह क्रिया पूर्ववत नहीं की जा सकती।';
+
+  @override
+  String get dataCleared => 'सभी डेटा सफलतापूर्वक साफ़ किया गया';
+
+  @override
+  String get clearingData => 'डेटा साफ़ किया जा रहा है...';
 
   @override
   String get clear => 'साफ़ करें';

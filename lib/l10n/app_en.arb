@@ -207,6 +207,11 @@
     "description": "Clear history option"
   },
   
+  "clearAllData": "Clear all data",
+  "@clearAllData": {
+    "description": "Clear all data option"
+  },
+  
   "exportData": "Export data",
   "@exportData": {
     "description": "Export data option"
@@ -1175,6 +1180,26 @@
   "clearHistoryWarning": "This will delete all your data. This cannot be undone.",
   "@clearHistoryWarning": {
     "description": "Clear history warning"
+  },
+  
+  "clearAllDataQuestion": "Clear all data?",
+  "@clearAllDataQuestion": {
+    "description": "Clear all data dialog title"
+  },
+  
+  "clearAllDataWarning": "This will permanently delete all your data including chat history, journal entries, assessments, settings, and downloaded AI models. This action cannot be undone.",
+  "@clearAllDataWarning": {
+    "description": "Clear all data warning message"
+  },
+  
+  "dataCleared": "All data cleared successfully",
+  "@dataCleared": {
+    "description": "Data cleared success message"
+  },
+  
+  "clearingData": "Clearing data...",
+  "@clearingData": {
+    "description": "Clearing data progress message"
   },
   
   "clear": "Clear",

@@ -133,6 +133,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get clearHistory => 'Cancella cronologia';
 
   @override
+  String get clearAllData => 'Cancella tutti i dati';
+
+  @override
   String get exportData => 'Esporta dati';
 
   @override
@@ -715,6 +718,19 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'Questo eliminerà tutti i tuoi dati. Questa azione non può essere annullata.';
+
+  @override
+  String get clearAllDataQuestion => 'Cancellare tutti i dati?';
+
+  @override
+  String get clearAllDataWarning =>
+      'Questo eliminerà permanentemente tutti i tuoi dati inclusa la cronologia chat, le voci del diario, le valutazioni, le impostazioni e i modelli di IA scaricati. Questa azione non può essere annullata.';
+
+  @override
+  String get dataCleared => 'Tutti i dati sono stati cancellati con successo';
+
+  @override
+  String get clearingData => 'Cancellazione dati in corso...';
 
   @override
   String get clear => 'Cancella';

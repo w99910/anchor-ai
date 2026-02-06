@@ -350,6 +350,12 @@ abstract class AppLocalizations {
   /// **'Clear history'**
   String get clearHistory;
 
+  /// Clear all data option
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all data'**
+  String get clearAllData;
+
   /// Export data option
   ///
   /// In en, this message translates to:
@@ -1417,6 +1423,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This will delete all your data. This cannot be undone.'**
   String get clearHistoryWarning;
+
+  /// Clear all data dialog title
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all data?'**
+  String get clearAllDataQuestion;
+
+  /// Clear all data warning message
+  ///
+  /// In en, this message translates to:
+  /// **'This will permanently delete all your data including chat history, journal entries, assessments, settings, and downloaded AI models. This action cannot be undone.'**
+  String get clearAllDataWarning;
+
+  /// Data cleared success message
+  ///
+  /// In en, this message translates to:
+  /// **'All data cleared successfully'**
+  String get dataCleared;
+
+  /// Clearing data progress message
+  ///
+  /// In en, this message translates to:
+  /// **'Clearing data...'**
+  String get clearingData;
 
   /// Clear button
   ///

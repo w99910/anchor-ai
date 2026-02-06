@@ -134,6 +134,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get clearHistory => 'Verlauf löschen';
 
   @override
+  String get clearAllData => 'Alle Daten löschen';
+
+  @override
   String get exportData => 'Daten exportieren';
 
   @override
@@ -714,6 +717,19 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get clearHistoryWarning =>
       'Dies löscht alle deine Daten. Diese Aktion kann nicht rückgängig gemacht werden.';
+
+  @override
+  String get clearAllDataQuestion => 'Alle Daten löschen?';
+
+  @override
+  String get clearAllDataWarning =>
+      'Dies löscht dauerhaft alle deine Daten einschließlich Chat-Verlauf, Tagebucheinträge, Bewertungen, Einstellungen und heruntergeladene KI-Modelle. Diese Aktion kann nicht rückgängig gemacht werden.';
+
+  @override
+  String get dataCleared => 'Alle Daten erfolgreich gelöscht';
+
+  @override
+  String get clearingData => 'Daten werden gelöscht...';
 
   @override
   String get clear => 'Löschen';

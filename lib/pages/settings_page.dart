@@ -1,8 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+
 import '../l10n/generated/app_localizations.dart';
 import '../main.dart' show themeNotifier, saveTheme;
 import '../services/ai_settings_service.dart';
 import '../services/app_lock_service.dart';
+import '../services/database_service.dart';
 import '../services/gemini_service.dart';
 import '../services/locale_service.dart';
 import '../utils/responsive.dart';
@@ -103,8 +110,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SectionTitle(l10n.data),
                 _ActionTile(
                   icon: Icons.delete_outline_rounded,
-                  title: l10n.clearHistory,
-                  onTap: () => _showClearDialog(context),
+                  title: l10n.clearAllData,
+                  onTap: () => _showClearAllDataDialog(context),
                 ),
                 _ActionTile(
                   icon: Icons.download_outlined,
@@ -398,6 +405,99 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  void _showClearAllDataDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          Icons.warning_rounded,
+          size: 48,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: Text(l10n.clearAllDataQuestion),
+        content: Text(l10n.clearAllDataWarning),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _clearAllData(context);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: Text(l10n.clear),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearAllData(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
+
+    // Show loading indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.clearingData),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
+
+    try {
+      // 1. Clear SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      // 2. Delete SQLite database
+      final dbService = DatabaseService();
+      await dbService.close();
+      final databasesPath = await getDatabasesPath();
+      final dbPath = '$databasesPath/anchor.db';
+      if (await File(dbPath).exists()) {
+        await deleteDatabase(dbPath);
+      }
+
+      // 3. Delete downloaded model files
+      final appDir = await getApplicationDocumentsDirectory();
+      final modelsDir = Directory('${appDir.path}/models');
+      if (await modelsDir.exists()) {
+        await modelsDir.delete(recursive: true);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.dataCleared),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // Optionally restart the app or reset state
+        // You might want to navigate to onboarding or restart
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing data: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   void _showAbout(BuildContext context) {

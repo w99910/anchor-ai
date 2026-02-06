@@ -63,12 +63,12 @@ const Hero = () => {
             </svg>
             Build on Iphone
           </button>
-          <button onClick={() => window.open('http://assets.thomasbrillion.pro/data/anchor-ai.apk', '_blank')} className="bg-white hover:bg-gray-50 hover:scale-105 text-gray-900 font-poppins font-medium px-8 py-4 rounded-full transition-all duration-300 text-lg border border-gray-200 flex items-center gap-2">
+          <a href="http://assets.thomasbrillion.pro/data/anchor-ai.apk" download="anchor-ai.apk" className="bg-white hover:bg-gray-50 hover:scale-105 text-gray-900 font-poppins font-medium px-8 py-4 rounded-full transition-all duration-300 text-lg border border-gray-200 flex items-center gap-2">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.523 15.341c-.676-.698-1.746-.879-2.642-.404l-1.571.834-2.311-2.311 2.311-2.311 1.571.834c.896.475 1.966.294 2.642-.404l2.828-2.828a1 1 0 0 0 0-1.414L15.523 2.51a1 1 0 0 0-1.414 0l-2.828 2.828c-.678.678-.879 1.746-.404 2.642l.834 1.571-2.31 2.31-2.311-2.31.834-1.571c.475-.896.274-1.964-.404-2.642L4.692 2.51a1 1 0 0 0-1.414 0L.45 5.338a1 1 0 0 0 0 1.414l2.828 2.828c.678.678 1.746.879 2.642.404l1.571-.834 2.311 2.311-2.311 2.311-1.571-.834c-.896-.475-1.964-.294-2.642.404L.45 16.17a1 1 0 0 0 0 1.414l2.828 2.828a1 1 0 0 0 1.414 0l2.828-2.828c.678-.678.879-1.746.404-2.642l-.834-1.571 2.311-2.311 2.311 2.311-.834 1.571c-.475.896-.274 1.964.404 2.642l2.828 2.828a1 1 0 0 0 1.414 0l2.828-2.828a1 1 0 0 0 0-1.414l-2.829-2.829z"/>
             </svg>
             Download on Android
-          </button>
+          </a>
         </div>
 
         {/* Stats Section */}

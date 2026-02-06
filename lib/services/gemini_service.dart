@@ -131,12 +131,10 @@ class GeminiService extends ChangeNotifier {
 
       // Stream the response if streaming is enabled
       if (streamController != null) {
-        // Simulate streaming by sending chunks
+        // Simulate streaming by sending delta chunks
         for (int i = 0; i < text.length; i += 5) {
-          final chunk = text.substring(
-            0,
-            i + 5 > text.length ? text.length : i + 5,
-          );
+          final end = i + 5 > text.length ? text.length : i + 5;
+          final chunk = text.substring(i, end);
           streamController.add(chunk);
           await Future.delayed(const Duration(milliseconds: 20));
         }

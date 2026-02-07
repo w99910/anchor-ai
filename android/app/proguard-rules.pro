@@ -17,6 +17,10 @@
 # ExecutorTorch Flutter plugin
 -keep class com.example.executorch_flutter.** { *; }
 
+# ExecuTorch Android library (JNI)
+-keep class org.pytorch.executorch.** { *; }
+-keep class com.facebook.jni.** { *; }
+
 # Dio HTTP client (used for model downloads)
 -keep class io.flutter.plugins.** { *; }
 -dontwarn okhttp3.**

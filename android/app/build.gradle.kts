@@ -54,6 +54,12 @@ android {
     }
 }
 
+dependencies {
+    // ExecuTorch Android LLM library (JNI-based, no process spawning)
+    implementation("org.pytorch:executorch-android:1.1.0")
+    implementation("com.facebook.fbjni:fbjni:0.5.1")
+}
+
 flutter {
     source = "../.."
 }

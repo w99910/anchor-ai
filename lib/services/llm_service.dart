@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -12,60 +11,13 @@ import 'ios_llm_service.dart';
 import 'model_download_service.dart';
 import 'user_info_service.dart';
 
-/// Data class to pass to isolate
-class _InferenceRequest {
-  final String modelPath;
-  final String tokenizerPath;
-  final String prompt;
-  final int maxTokens;
-  final RootIsolateToken rootIsolateToken;
-  final SendPort sendPort;
-
-  _InferenceRequest({
-    required this.modelPath,
-    required this.tokenizerPath,
-    required this.prompt,
-    required this.maxTokens,
-    required this.rootIsolateToken,
-    required this.sendPort,
-  });
-}
-
-/// Run inference in a background isolate
-Future<void> _runInferenceInIsolate(_InferenceRequest request) async {
-  debugPrint(
-    '[BG_ISOLATE] Running in background isolate: ${Isolate.current.hashCode}',
-  );
-
-  // Register the background isolate with the root isolate's binary messenger
-  BackgroundIsolateBinaryMessenger.ensureInitialized(request.rootIsolateToken);
-  debugPrint('[BG_ISOLATE] Binary messenger initialized');
-
-  const channel = MethodChannel('com.example.anchor/llm');
-
-  try {
-    debugPrint('[BG_ISOLATE] Calling platform channel...');
-    final result = await channel.invokeMethod<String>('runLlama', {
-      'modelPath': request.modelPath,
-      'tokenizerPath': request.tokenizerPath,
-      'prompt': request.prompt,
-      'maxSeqLen': request.maxTokens,
-    });
-    debugPrint('[BG_ISOLATE] Got result, sending back to main isolate');
-    request.sendPort.send({'success': true, 'result': result});
-  } catch (e) {
-    debugPrint('[BG_ISOLATE] Error: $e');
-    request.sendPort.send({'success': false, 'error': e.toString()});
-  }
-}
-
 /// Status of the LLM model
 enum LlmModelStatus { notLoaded, loading, ready, error }
 
 /// Inference backend type
 enum LlmBackend {
   none,
-  nativeRunner, // Using native llama_main binary (Android)
+  nativeRunner, // Using ExecuTorch LlmModule JNI (Android)
   iosExecuTorch, // Using native ExecuTorchLLM (iOS)
   mockResponses, // Fallback mock responses
   geminiCloud, // Cloud Gemini API
@@ -231,20 +183,38 @@ class LlmService extends ChangeNotifier {
         }
       }
 
-      // Try native runner (Android only)
+      // Try native runner (Android only) — uses ExecuTorch LlmModule JNI
       if (Platform.isAndroid) {
         final hasNativeRunner = await isNativeRunnerAvailable();
 
         if (hasNativeRunner) {
-          debugPrint('Using native Llama runner');
-          _activeBackend = LlmBackend.nativeRunner;
-          _updateProgress(1.0, 'Ready');
-          _status = LlmModelStatus.ready;
+          debugPrint('Loading model via ExecuTorch LlmModule...');
+          _updateProgress(0.5, 'Loading model into memory...');
 
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('llm_model_loaded', true);
-          notifyListeners();
-          return;
+          try {
+            final loadResult = await _nativeChannel
+                .invokeMethod<Map>('loadModel', {
+                  'modelPath': modelPath,
+                  'tokenizerPath': tokenizerPath,
+                  'temperature': 0.0,
+                });
+            final loadTime = loadResult?['loadTimeSeconds'] as double? ?? 0.0;
+            debugPrint(
+              'ExecuTorch model loaded in ${loadTime.toStringAsFixed(2)}s',
+            );
+
+            _activeBackend = LlmBackend.nativeRunner;
+            _updateProgress(1.0, 'Ready');
+            _status = LlmModelStatus.ready;
+
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('llm_model_loaded', true);
+            notifyListeners();
+            return;
+          } catch (e) {
+            debugPrint('ExecuTorch model loading failed: $e');
+            // Fall through to mock responses
+          }
         }
       }
 
@@ -339,7 +309,7 @@ class LlmService extends ChangeNotifier {
               ? 'You are a warm, supportive friend. Be genuine, validate feelings, and speak naturally.'
               : 'You are a compassionate AI therapist. Use reflective listening and gentle questions to help explore emotions.')
         : (mode == 'friend'
-        ? '''You are a warm, genuine, and supportive friend. You are NOT a clinical therapist.
+              ? '''You are a warm, genuine, and supportive friend. You are NOT a clinical therapist.
 
 Guidelines:
 
@@ -352,7 +322,7 @@ Conversational Tone: Speak naturally. Use phrases like 'I get it,' 'That is so h
 Less Asking, More Sharing: Do not end every message with a question. Sometimes, just sitting with the emotion is enough. If you do ask a question, make it casual.
 
 When speaking in other language, do not translate English idioms literally.$userContext'''
-        : '''Role: You are a compassionate, professional, and non-judgmental AI therapist. You draw upon techniques from Cognitive Behavioral Therapy (CBT) and Person-Centered Therapy.
+              : '''Role: You are a compassionate, professional, and non-judgmental AI therapist. You draw upon techniques from Cognitive Behavioral Therapy (CBT) and Person-Centered Therapy.
 
 Core Objective: Your goal is not to "fix" the user or give direct advice, but to help them explore their emotions, identify cognitive distortions (negative thought patterns), and find their own clarity.
 
@@ -401,7 +371,11 @@ Lanaguage: When speaking in other language, do not translate English idioms lite
     return _generateMockResponse(prompt, mode);
   }
 
-  /// Generate response using native Llama runner in a background isolate
+  /// Generate response using ExecuTorch LlmModule (JNI — model already in memory)
+  ///
+  /// The native side runs generation on a dedicated executor thread so it
+  /// won't block the Flutter UI thread. With the ExecuTorch library approach
+  /// the output is clean tokens — no log noise or stdout parsing needed.
   Future<String> _generateWithNativeRunner(
     String prompt,
     int maxTokens, {
@@ -412,55 +386,97 @@ Lanaguage: When speaking in other language, do not translate English idioms lite
     }
 
     try {
-      debugPrint(
-        '[MAIN] Starting inference - main isolate: ${Isolate.current.hashCode}',
-      );
+      debugPrint('[ExecuTorch] Starting generation (maxTokens=$maxTokens)');
 
-      // Get the root isolate token for background isolate communication
-      final rootIsolateToken = RootIsolateToken.instance;
-      if (rootIsolateToken == null) {
-        throw Exception('Could not get RootIsolateToken');
-      }
-      debugPrint('[MAIN] Got RootIsolateToken');
-
-      // Create a receive port to get the result
-      final receivePort = ReceivePort();
-
-      // Spawn the isolate - this returns immediately
-      debugPrint('[MAIN] Spawning background isolate...');
-      await Isolate.spawn(
-        _runInferenceInIsolate,
-        _InferenceRequest(
-          modelPath: _externalModelPath!,
-          tokenizerPath: _tokenizerPath!,
-          prompt: prompt,
-          maxTokens: maxTokens,
-          rootIsolateToken: rootIsolateToken,
-          sendPort: receivePort.sendPort,
-        ),
-      );
-      debugPrint('[MAIN] Isolate spawned! UI should be responsive now...');
-
-      // Wait for the result - this is async, should not block UI
-      final response = await receivePort.first as Map<dynamic, dynamic>;
-      debugPrint('[MAIN] Got response from background isolate');
-      receivePort.close();
-
-      if (response['success'] == true) {
-        final result = response['result'] as String?;
-        final parsed = _parseNativeOutput(result ?? '');
-        debugPrint(
-          'Isolate inference complete: ${parsed.substring(0, parsed.length.clamp(0, 50))}...',
+      // If streaming is requested, use EventChannel for real-time tokens
+      if (streamController != null) {
+        return _generateWithNativeRunnerStreaming(
+          prompt,
+          maxTokens,
+          streamController,
         );
-        return parsed;
-      } else {
-        debugPrint('Isolate inference error: ${response['error']}');
-        return _generateMockResponse(prompt, 'friend');
       }
+
+      // Non-streaming: call runLlama which returns the full generated text
+      // The native side uses LlmModule.generate() with a callback internally,
+      // collects all tokens, then returns the complete response.
+      final result = await _nativeChannel.invokeMethod<String>('runLlama', {
+        'modelPath': _externalModelPath!,
+        'tokenizerPath': _tokenizerPath!,
+        'prompt': prompt,
+        'maxSeqLen': maxTokens,
+      });
+
+      final response = result ?? '';
+      debugPrint('[ExecuTorch] Generation complete: ${response.length} chars');
+      return response;
     } catch (e) {
-      debugPrint('Native runner error: $e');
+      debugPrint('[ExecuTorch] Generation error: $e');
       return _generateMockResponse(prompt, 'friend');
     }
+  }
+
+  /// Streaming generation via EventChannel — tokens arrive in real-time
+  Future<String> _generateWithNativeRunnerStreaming(
+    String prompt,
+    int maxTokens,
+    StreamController<String> streamController,
+  ) async {
+    final completer = Completer<String>();
+    final collectedTokens = StringBuffer();
+
+    const streamChannel = EventChannel('com.example.anchor/llm_stream');
+    StreamSubscription? subscription;
+
+    subscription = streamChannel.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map) {
+          final type = event['type'] as String?;
+          final data = event['data'] as String? ?? '';
+
+          switch (type) {
+            case 'token':
+              collectedTokens.write(data);
+              streamController.add(data);
+              break;
+            case 'done':
+              subscription?.cancel();
+              if (!completer.isCompleted) {
+                completer.complete(collectedTokens.toString());
+              }
+              break;
+            case 'stats':
+              final tps = event['tokensPerSecond'] as double? ?? 0.0;
+              debugPrint('[ExecuTorch] ${tps.toStringAsFixed(1)} tokens/sec');
+              break;
+            case 'status':
+              debugPrint('[ExecuTorch] Status: $data');
+              break;
+          }
+        }
+      },
+      onError: (error) {
+        subscription?.cancel();
+        if (!completer.isCompleted) {
+          completer.complete(collectedTokens.toString());
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.complete(collectedTokens.toString());
+        }
+      },
+    );
+
+    // Trigger streaming generation on the native side
+    await _nativeChannel.invokeMethod('runLlamaStream', {
+      'modelPath': _externalModelPath!,
+      'tokenizerPath': _tokenizerPath!,
+      'prompt': prompt,
+      'maxSeqLen': maxTokens,
+    });
+
+    return completer.future;
   }
 
   /// Generate response using iOS ExecuTorch runner
@@ -544,83 +560,6 @@ Lanaguage: When speaking in other language, do not translate English idioms lite
     return fullText;
   }
 
-  /// Parse output from native llama_main
-  String _parseNativeOutput(String output) {
-    // The native runner outputs text interleaved with log lines
-    // Log lines look like: "I 00:00:03.042659 executorch:..."
-    // Text can appear before log timestamps on the same line
-
-    debugPrint('Raw native output length: ${output.length}');
-
-    // Split into lines
-    final lines = output.split('\n');
-    final textParts = <String>[];
-
-    for (final line in lines) {
-      // Skip pure log/metadata lines
-      if (line.startsWith('I tokenizers:') ||
-          line.startsWith('PyTorchObserver') ||
-          line.startsWith('E tokenizers:') ||
-          line.trim().isEmpty) {
-        continue;
-      }
-
-      // Skip lines that start with log pattern (I/E/W followed by timestamp)
-      if (RegExp(r'^[IEW]\s+\d{2}:\d{2}').hasMatch(line)) {
-        continue;
-      }
-
-      // Extract text before any embedded log line (I 00:00:...)
-      String textPart = line;
-      final logMatch = RegExp(
-        r'[IEW]\s+\d{2}:\d{2}:\d{2}\.\d+',
-      ).firstMatch(line);
-      if (logMatch != null) {
-        textPart = line.substring(0, logMatch.start);
-      }
-
-      if (textPart.trim().isNotEmpty) {
-        textParts.add(textPart.trim());
-      }
-    }
-
-    // Join all text parts
-    String fullText = textParts.join(' ').trim();
-
-    debugPrint('Joined text (before parsing): $fullText');
-    // Llama uses <|start_header_id|>assistant<|end_header_id|> format
-    final assistantMarkerIndex = fullText.lastIndexOf(
-      '<|start_header_id|>assistant<|end_header_id|>',
-    );
-    if (assistantMarkerIndex != -1) {
-      fullText = fullText.substring(
-        assistantMarkerIndex +
-            '<|start_header_id|>assistant<|end_header_id|>'.length,
-      );
-    }
-
-    // Remove Llama special tokens
-    fullText = fullText
-        .replaceAll('<|eot_id|>', '')
-        .replaceAll('Reached to the end of generation', '')
-        .replaceAll('<|end_of_text|>', '')
-        .replaceAll('<|begin_of_text|>', '')
-        .replaceAll(RegExp(r'<\|start_header_id\|>\w+<\|end_header_id\|>'), '')
-        .trim();
-
-    // If no special tokens found, try to find the response after the prompt
-    // The prompt is echoed first, then the response follows
-    if (fullText.isEmpty && textParts.isNotEmpty) {
-      // Just return the cleaned text parts
-      fullText = textParts.join(' ').trim();
-    }
-
-    debugPrint(
-      'Parsed response: ${fullText.substring(0, fullText.length.clamp(0, 100))}...',
-    );
-    return fullText;
-  }
-
   /// Generate a mock response when model is not available
   String _generateMockResponse(String prompt, String mode) {
     if (mode == 'friend') {
@@ -646,6 +585,15 @@ Lanaguage: When speaking in other language, do not translate English idioms lite
   @override
   Future<void> dispose() async {
     _status = LlmModelStatus.notLoaded;
+
+    // Unload native model
+    if (Platform.isAndroid) {
+      try {
+        await _nativeChannel.invokeMethod('unloadModel');
+      } catch (e) {
+        debugPrint('Error unloading Android model: $e');
+      }
+    }
 
     // Unload iOS model if loaded
     if (Platform.isIOS) {

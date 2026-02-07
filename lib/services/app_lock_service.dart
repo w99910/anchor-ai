@@ -85,7 +85,11 @@ class AppLockService extends ChangeNotifier {
       }
 
       // Check biometric capabilities
-      _canCheckBiometrics = await _localAuth.canCheckBiometrics;
+      // local_auth 3.x: canCheckBiometrics checks hardware,
+      // isDeviceSupported checks if any auth (PIN/pattern/biometric) is set up
+      _canCheckBiometrics =
+          await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
       if (_canCheckBiometrics) {
         _availableBiometrics = await _localAuth.getAvailableBiometrics();
       }
@@ -211,6 +215,7 @@ class AppLockService extends ChangeNotifier {
       final didAuthenticate = await _localAuth.authenticate(
         localizedReason: reason ?? 'Unlock Anchor',
         biometricOnly: true,
+        sensitiveTransaction: true,
         persistAcrossBackgrounding: true,
       );
 
